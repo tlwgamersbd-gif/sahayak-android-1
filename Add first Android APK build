@@ -1,0 +1,190 @@
+name: Build Sahayak APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Get repository files
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Create starter Android project
+        shell: bash
+        run: |
+          mkdir -p starter/app/src/main/java/com/example/sahayak
+
+          cat > starter/settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          dependencyResolutionManagement {
+              repositoriesMode.set(
+                  RepositoriesMode.FAIL_ON_PROJECT_REPOS
+              )
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.name = "Sahayak"
+          include(":app")
+          EOF
+
+          cat > starter/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+          }
+          EOF
+
+          cat > starter/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+          kotlin.code.style=official
+          EOF
+
+          cat > starter/app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.example.sahayak"
+              compileSdk = 35
+
+              defaultConfig {
+                  applicationId = "com.example.sahayak"
+                  minSdk = 26
+                  targetSdk = 35
+                  versionCode = 1
+                  versionName = "0.1"
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+          EOF
+
+          cat > starter/app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application
+                  android:allowBackup="false"
+                  android:label="Sahayak"
+                  android:supportsRtl="true"
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > starter/app/src/main/java/com/example/sahayak/MainActivity.kt <<'EOF'
+          package com.example.sahayak
+
+          import android.app.Activity
+          import android.os.Bundle
+          import android.view.Gravity
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.TextView
+
+          class MainActivity : Activity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+
+                  val padding = (24 * resources.displayMetrics.density).toInt()
+
+                  val layout = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      gravity = Gravity.CENTER
+                      setPadding(padding, padding, padding, padding)
+                  }
+
+                  val title = TextView(this).apply {
+                      text = "Sahayak"
+                      textSize = 30f
+                      gravity = Gravity.CENTER
+                  }
+
+                  val status = TextView(this).apply {
+                      text = "আপনার প্রথম অ্যাপ চালু হয়েছে।\nএখনো AI যুক্ত হয়নি।"
+                      textSize = 19f
+                      gravity = Gravity.CENTER
+                      setPadding(0, padding, 0, padding)
+                  }
+
+                  var count = 0
+
+                  val button = Button(this).apply {
+                      text = "পরীক্ষা করুন"
+                      setOnClickListener {
+                          count += 1
+                          status.text = "বাটন কাজ করছে!\nআপনি $count বার চাপ দিয়েছেন।"
+                      }
+                  }
+
+                  layout.addView(title)
+                  layout.addView(status)
+                  layout.addView(button)
+
+                  setContentView(layout)
+              }
+          }
+          EOF
+
+      - name: Build debug APK
+        working-directory: starter
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Save APK for download
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sahayak-APK
+          path: starter/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 3
